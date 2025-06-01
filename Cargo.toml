@@ -1,0 +1,21 @@
+[package]
+name = "vault-cli"
+version = "0.1.0"
+edition = "2021"
+authors = ["soldercore"]
+description = "Ultra-secure offline terminal-based password manager written in Rust."
+repository = "https://github.com/soldercore/vault-cli"
+license = "MIT"
+
+[dependencies]
+aes-gcm = "0.10"
+aes = "0.8"
+aead = "0.5"
+argon2 = "0.5"
+rand = "0.8"
+zeroize = "1.6"
+serde = { version = "1.0", features = ["derive"] }
+bincode = "1.3"
+sha2 = "0.10"
+hmac = "0.12"
+rpassword = "7.2"
