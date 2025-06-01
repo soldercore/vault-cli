@@ -1,4 +1,4 @@
-# Ultra-secure PowerShell Vault CLI v0.2
+# Ultra-secure PowerShell Vault CLI v0.3
 $vaultFile = "$PSScriptRoot\vault.secure"
 $saltFile = "$PSScriptRoot\vault.salt"
 
@@ -8,7 +8,15 @@ function Derive-Key($password, $salt) {
 }
 
 function Encrypt-Vault($vault, $key) {
+    if ($null -eq $vault) {
+        throw "Vault is null. Nothing to encrypt."
+    }
+
     $json = ConvertTo-Json $vault -Depth 5
+    if ([string]::IsNullOrWhiteSpace($json)) {
+        throw "Vault JSON is empty or invalid."
+    }
+
     $bytes = [System.Text.Encoding]::UTF8.GetBytes($json)
 
     $aes = [System.Security.Cryptography.Aes]::Create()
@@ -94,25 +102,41 @@ do {
             $vault += @{account = $account; password = $password}
         }
         "2" {
-            $i = 1
-            foreach ($entry in $vault) {
-                Write-Host "[$i] $($entry.account) - $($entry.password)"
-                $i++
+            if ($vault.Count -eq 0) {
+                Write-Host "📭 Vault is empty."
+            } else {
+                $i = 1
+                foreach ($entry in $vault) {
+                    Write-Host "[$i] $($entry.account) - $($entry.password)"
+                    $i++
+                }
             }
         }
         "3" {
-            $index = Read-Host "Entry number to delete"
-            if ($index -match '^\d+$' -and $index -le $vault.Count) {
-                $vault.RemoveAt($index - 1)
-                Write-Host "🗑️ Entry deleted."
+            if ($vault.Count -eq 0) {
+                Write-Host "📭 Vault is empty. Nothing to delete."
             } else {
-                Write-Host "❌ Invalid number."
+                $index = Read-Host "Entry number to delete"
+                if ($index -match '^\d+$' -and $index -le $vault.Count) {
+                    $vault.RemoveAt($index - 1)
+                    Write-Host "🗑️ Entry deleted."
+                } else {
+                    Write-Host "❌ Invalid number."
+                }
             }
         }
     }
 } while ($choice -ne "4")
 
 # Save vault
-$data = Encrypt-Vault $vault $key
-[System.IO.File]::WriteAllBytes($vaultFile, $data)
-Write-Host "🔒 Vault saved and locked."
+try {
+    $data = Encrypt-Vault $vault $key
+    [System.IO.File]::WriteAllBytes($vaultFile, $data)
+    Write-Host "🔒 Vault saved and locked."
+} catch {
+    Write-Error "❌ Failed to save vault: $_"
+}
+
+# Pause before exit
+Write-Host ""
+Read-Host "Press ENTER to exit"
