@@ -1,4 +1,4 @@
-# Ultra-secure PowerShell Vault CLI v0.3
+# Ultra-secure PowerShell Vault CLI v0.4
 $vaultFile = "$PSScriptRoot\vault.secure"
 $saltFile = "$PSScriptRoot\vault.salt"
 
@@ -75,8 +75,20 @@ if (-not (Test-Path $saltFile)) {
     $salt = [System.IO.File]::ReadAllBytes($saltFile)
 }
 
-$master = Prompt-MasterPassword
+# Prompt for master password until it's not empty
+do {
+    $master = Prompt-MasterPassword
+    if ([string]::IsNullOrWhiteSpace($master)) {
+        Write-Host "Master password cannot be empty. Try again."
+    }
+} while ([string]::IsNullOrWhiteSpace($master))
+
+# Derive key and check validity
 $key = Derive-Key $master $salt
+if ($null -eq $key -or $key.Length -ne 32) {
+    Write-Error "❌ Failed to derive a valid encryption key. Exiting."
+    exit
+}
 
 # Load vault
 $vault = @()
@@ -137,6 +149,5 @@ try {
     Write-Error "❌ Failed to save vault: $_"
 }
 
-# Pause before exit
 Write-Host ""
 Read-Host "Press ENTER to exit"
