@@ -1,5 +1,6 @@
-# PowerShell Vault CLI - Secure password manager (v0.1)
+# Ultra-secure PowerShell Vault CLI v0.2
 $vaultFile = "$PSScriptRoot\vault.secure"
+$saltFile = "$PSScriptRoot\vault.salt"
 
 function Derive-Key($password, $salt) {
     $pbkdf2 = New-Object System.Security.Cryptography.Rfc2898DeriveBytes($password, $salt, 200000)
@@ -20,7 +21,10 @@ function Encrypt-Vault($vault, $key) {
     $encryptor = $aes.CreateEncryptor()
     $cipher = $encryptor.TransformFinalBlock($bytes, 0, $bytes.Length)
 
-    return [byte[]]::Concat($aes.IV, $cipher)
+    $combined = New-Object byte[] ($aes.IV.Length + $cipher.Length)
+    [Array]::Copy($aes.IV, 0, $combined, 0, $aes.IV.Length)
+    [Array]::Copy($cipher, 0, $combined, $aes.IV.Length, $cipher.Length)
+    return $combined
 }
 
 function Decrypt-Vault($data, $key) {
@@ -54,12 +58,20 @@ function Menu {
     Write-Host "[4] Lock and Exit"
 }
 
-# Initialize
-$vault = @()
-$salt = [byte[]]::new(16); [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($salt)
+# Load or generate salt
+if (-not (Test-Path $saltFile)) {
+    $salt = New-Object byte[] 16
+    [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($salt)
+    [System.IO.File]::WriteAllBytes($saltFile, $salt)
+} else {
+    $salt = [System.IO.File]::ReadAllBytes($saltFile)
+}
+
 $master = Prompt-MasterPassword
 $key = Derive-Key $master $salt
 
+# Load vault
+$vault = @()
 if (Test-Path $vaultFile) {
     try {
         $data = [System.IO.File]::ReadAllBytes($vaultFile)
@@ -70,6 +82,7 @@ if (Test-Path $vaultFile) {
     }
 }
 
+# Menu loop
 do {
     Menu
     $choice = Read-Host "Select"
@@ -89,7 +102,12 @@ do {
         }
         "3" {
             $index = Read-Host "Entry number to delete"
-            $vault = $vault | Where-Object { $_ -ne $vault[$index - 1] }
+            if ($index -match '^\d+$' -and $index -le $vault.Count) {
+                $vault.RemoveAt($index - 1)
+                Write-Host "🗑️ Entry deleted."
+            } else {
+                Write-Host "❌ Invalid number."
+            }
         }
     }
 } while ($choice -ne "4")
