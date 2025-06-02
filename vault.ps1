@@ -34,7 +34,11 @@ function Decrypt-Data($cipherText, $key, $iv) {
 # --- Stiler
 function Style-Button($b, $danger=$false) {
     $b.FlatStyle = 'Flat'
-    $b.BackColor = $danger ? $dangerColor : $btnColor
+    if ($danger) {
+        $b.BackColor = $dangerColor
+    } else {
+        $b.BackColor = $btnColor
+    }
     $b.ForeColor = $fgColor
     $b.Font = New-Object Drawing.Font('Segoe UI',10,[Drawing.FontStyle]::Bold)
     $b.FlatAppearance.BorderSize = 0
@@ -44,7 +48,7 @@ function Style-Label($l) {
     $l.Font = New-Object Drawing.Font('Segoe UI',10)
 }
 
-# --- Setup Master Password (med styrke og vis/skjul)
+# --- Setup Master Password
 function Show-Setup {
     $f = New-Object Windows.Forms.Form
     $f.Text = "Set Master Password"
@@ -115,8 +119,10 @@ function Show-Setup {
             $error.Text = "Passwords do not match."
         } else {
             $global:master = $tb1.Text
-            [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes([ref]$global:salt = [byte[]]::new(16))
-            [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes([ref]$global:iv = [byte[]]::new(16))
+            $global:salt = [byte[]]::new(16)
+            $global:iv = [byte[]]::new(16)
+            [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($global:salt)
+            [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($global:iv)
             $f.Close()
             $global:setupComplete = $true
         }
@@ -125,7 +131,7 @@ function Show-Setup {
     $f.ShowDialog()
 }
 
-# --- Eksempel på bruk
+# --- Main starter
 $global:vaultFile = "$env:APPDATA\SecureVault\vault.dat"
 $global:master = $null
 $global:salt = $null
@@ -135,7 +141,7 @@ $global:setupComplete = $false
 if (-not (Test-Path $vaultFile)) {
     Show-Setup
     if ($global:setupComplete) {
-        $json = "[]" # tom vault
+        $json = "[]"
         $key = Derive-Key $global:master $global:salt
         $enc = Encrypt-Data $json $key $global:iv
         $bytes = $global:salt + $global:iv + [Convert]::FromBase64String($enc)
