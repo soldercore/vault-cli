@@ -289,12 +289,20 @@ function Set-Unlocked($value) {
 # --- Vault Save
 function Save-Vault {
     $json = $global:vault | ConvertTo-Json -Compress
+    if ([string]::IsNullOrWhiteSpace($json)) { $json = "[]" }
     $key = Derive-Key $global:master $global:salt
     $encrypted = Encrypt-Data $json $key $global:iv
+    if ($null -eq $encrypted) {
+        Write-Host "Error: Encrypted vault is null. Not saving."
+        return
+    }
     $vaultData = $global:salt + $global:iv + [System.Convert]::FromBase64String($encrypted)
+    if ($null -eq $vaultData) {
+        Write-Host "Error: Vault data is null. Not saving."
+        return
+    }
     [System.IO.File]::WriteAllBytes($global:vaultFile, $vaultData)
 }
-
 # --- Add entry
 $addBtn.Add_Click({
     $f = New-Object Windows.Forms.Form
