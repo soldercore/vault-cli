@@ -1,2 +1,2 @@
 # vault-cli
-Ultra-secure, offline password manager built in Rust for terminal use. Features AES-256-GCM encryption, Argon2id key derivation, and HMAC integrity verification.
+SecureVault: An easy-to-use, offline password manager with a graphical user interface (GUI) written in PowerShell. Your passwords are encrypted with AES-256 and stored securely in your Windows AppData folder.
