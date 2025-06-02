@@ -26,10 +26,25 @@ function Decrypt-Data($cipherText, $key, $iv) {
     return [System.Text.Encoding]::UTF8.GetString($decrypted)
 }
 
+function Generate-RandomFileName {
+    $guid = [System.Guid]::NewGuid().ToString().Replace("-", "")
+    return "$env:APPDATA\$guid.dat"
+}
+
+function Overwrite-And-DeleteFile($filePath) {
+    if (Test-Path $filePath) {
+        $bytes = [System.IO.File]::ReadAllBytes($filePath)
+        $random = New-Object byte[] $bytes.Length
+        [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($random)
+        [System.IO.File]::WriteAllBytes($filePath, $random)
+        Remove-Item $filePath -Force
+    }
+}
+
 # GUI Setup
 $form = New-Object Windows.Forms.Form
-$form.Text = "🔐 Secure Vault"
-$form.Size = New-Object Drawing.Size(400,400)
+$form.Text = "🔐 Ultra Secure Vault"
+$form.Size = New-Object Drawing.Size(420,420)
 $form.StartPosition = "CenterScreen"
 
 $label = New-Object Windows.Forms.Label
@@ -41,7 +56,7 @@ $form.Controls.Add($label)
 $infoLabel = New-Object Windows.Forms.Label
 $infoLabel.Text = "Vault is locked."
 $infoLabel.Location = New-Object Drawing.Point(220,20)
-$infoLabel.Size = New-Object Drawing.Size(160,20)
+$infoLabel.Size = New-Object Drawing.Size(180,20)
 $infoLabel.ForeColor = 'Red'
 $form.Controls.Add($infoLabel)
 
@@ -51,10 +66,50 @@ $masterBox.Size = New-Object Drawing.Size(360,20)
 $masterBox.UseSystemPasswordChar = $true
 $form.Controls.Add($masterBox)
 
-$loginButton = New-Object Windows.Forms.Button
-$loginButton.Text = "Unlock Vault"
-$loginButton.Location = New-Object Drawing.Point(10,75)
-$form.Controls.Add($loginButton)
+$vaultFile = Generate-RandomFileName
+$vault = @()
+$salt = [byte[]]::new(16)
+$iv = [byte[]]::new(16)
+
+function Enable-VaultUI($state) {
+    $vaultList.Enabled = $state
+    $accountBox.Enabled = $state
+    $passwordBox.Enabled = $state
+    $addButton.Enabled = $state
+    $changeButton.Enabled = $state
+    $showButton.Enabled = $state
+    $destroyButton.Enabled = $state
+    if ($state) {
+        $infoLabel.Text = "Vault is unlocked."
+        $infoLabel.ForeColor = 'Green'
+    } else {
+        $infoLabel.Text = "Vault is locked."
+        $infoLabel.ForeColor = 'Red'
+    }
+}
+
+# Choose file location on first run
+if (-Not (Test-Path $vaultFile)) {
+    $dialog = New-Object System.Windows.Forms.SaveFileDialog
+    $dialog.Title = "Choose a secret file location"
+    $dialog.Filter = "Data Files (*.dat)|*.dat|All Files (*.*)|*.*"
+    $dialog.InitialDirectory = $env:APPDATA
+    if ($dialog.ShowDialog() -eq "OK") {
+        $vaultFile = $dialog.FileName
+    }
+    [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($salt)
+    [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($iv)
+} else {
+    try {
+        $fileBytes = [System.IO.File]::ReadAllBytes($vaultFile)
+        $salt = $fileBytes[0..15]
+        $iv = $fileBytes[16..31]
+        $encrypted = $fileBytes[32..($fileBytes.Length-1)]
+        $data = [System.Convert]::ToBase64String($encrypted)
+    } catch {
+        [System.Windows.Forms.MessageBox]::Show("Error reading vault file.")
+    }
+}
 
 $vaultList = New-Object Windows.Forms.ListBox
 $vaultList.Location = New-Object Drawing.Point(10,110)
@@ -63,14 +118,12 @@ $vaultList.Enabled = $false
 $form.Controls.Add($vaultList)
 
 $accountBox = New-Object Windows.Forms.TextBox
-$accountBox.PlaceholderText = "Account"
 $accountBox.Location = New-Object Drawing.Point(10,270)
 $accountBox.Size = New-Object Drawing.Size(170,20)
 $accountBox.Enabled = $false
 $form.Controls.Add($accountBox)
 
 $passwordBox = New-Object Windows.Forms.TextBox
-$passwordBox.PlaceholderText = "Password"
 $passwordBox.Location = New-Object Drawing.Point(200,270)
 $passwordBox.Size = New-Object Drawing.Size(170,20)
 $passwordBox.UseSystemPasswordChar = $true
@@ -95,51 +148,16 @@ $showButton.Location = New-Object Drawing.Point(10,330)
 $showButton.Enabled = $false
 $form.Controls.Add($showButton)
 
-$resetButton = New-Object Windows.Forms.Button
-$resetButton.Text = "Reset Vault"
-$resetButton.Location = New-Object Drawing.Point(200,330)
-$form.Controls.Add($resetButton)
+$destroyButton = New-Object Windows.Forms.Button
+$destroyButton.Text = "Destroy Vault"
+$destroyButton.Location = New-Object Drawing.Point(200,330)
+$destroyButton.Enabled = $false
+$form.Controls.Add($destroyButton)
 
-# Vault logic
-$vaultFile = "$env:APPDATA\SecureVault\vault.dat"
-$vault = @()
-$salt = [byte[]]::new(16)
-$iv = [byte[]]::new(16)
-
-function Enable-VaultUI($state) {
-    $vaultList.Enabled = $state
-    $accountBox.Enabled = $state
-    $passwordBox.Enabled = $state
-    $addButton.Enabled = $state
-    $changeButton.Enabled = $state
-    $showButton.Enabled = $state
-    if ($state) {
-        $infoLabel.Text = "Vault is unlocked."
-        $infoLabel.ForeColor = 'Green'
-    } else {
-        $infoLabel.Text = "Vault is locked."
-        $infoLabel.ForeColor = 'Red'
-    }
-}
-
-if (-not (Test-Path "$env:APPDATA\SecureVault")) {
-    New-Item -ItemType Directory -Path "$env:APPDATA\SecureVault" | Out-Null
-}
-
-if (-Not (Test-Path $vaultFile)) {
-    [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($salt)
-    [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($iv)
-} else {
-    try {
-        $fileBytes = [System.IO.File]::ReadAllBytes($vaultFile)
-        $salt = $fileBytes[0..15]
-        $iv = $fileBytes[16..31]
-        $encrypted = $fileBytes[32..($fileBytes.Length-1)]
-        $data = [System.Convert]::ToBase64String($encrypted)
-    } catch {
-        [System.Windows.Forms.MessageBox]::Show("Error reading vault file.")
-    }
-}
+$loginButton = New-Object Windows.Forms.Button
+$loginButton.Text = "Unlock Vault"
+$loginButton.Location = New-Object Drawing.Point(10,75)
+$form.Controls.Add($loginButton)
 
 $loginButton.Add_Click({
     $key = Derive-Key $masterBox.Text $salt
@@ -233,25 +251,45 @@ $changeButton.Add_Click({
 $showButton.Add_Click({
     if ($vaultList.SelectedIndex -ge 0) {
         $entry = $vault[$vaultList.SelectedIndex]
-        [System.Windows.Forms.MessageBox]::Show("Password: $($entry.password)")
-        $entry.password = $null
+        # Krever masterpassord for å vise passord!
+        $inputForm = New-Object Windows.Forms.Form
+        $inputForm.Text = "Enter Master Password"
+        $inputForm.Size = New-Object Drawing.Size(250,120)
+        $inputForm.StartPosition = "CenterScreen"
+        $inputBox = New-Object Windows.Forms.TextBox
+        $inputBox.Location = New-Object Drawing.Point(10,10)
+        $inputBox.Size = New-Object Drawing.Size(210,20)
+        $inputBox.UseSystemPasswordChar = $true
+        $inputForm.Controls.Add($inputBox)
+        $okBtn = New-Object Windows.Forms.Button
+        $okBtn.Text = "OK"
+        $okBtn.Location = New-Object Drawing.Point(70,40)
+        $inputForm.Controls.Add($okBtn)
+        $okBtn.Add_Click({
+            if ($inputBox.Text -eq $masterBox.Text) {
+                [System.Windows.Forms.MessageBox]::Show("Password: $($entry.password)")
+                $entry.password = $null
+                $inputForm.Close()
+            } else {
+                [System.Windows.Forms.MessageBox]::Show("Wrong master password.")
+            }
+        })
+        [void]$inputForm.ShowDialog()
     } else {
         [System.Windows.Forms.MessageBox]::Show("Select an entry to show the password.")
     }
 })
 
-$resetButton.Add_Click({
-    if ([System.Windows.Forms.MessageBox]::Show("Are you sure you want to reset the vault?", "Confirm", [System.Windows.Forms.MessageBoxButtons]::YesNo) -eq [System.Windows.Forms.DialogResult]::Yes) {
+$destroyButton.Add_Click({
+    if ([System.Windows.Forms.MessageBox]::Show("This will destroy all vault data, unrecoverable. Continue?", "Confirm Destroy", [System.Windows.Forms.MessageBoxButtons]::YesNo) -eq [System.Windows.Forms.DialogResult]::Yes) {
         try {
-            Remove-Item $vaultFile -ErrorAction SilentlyContinue
+            Overwrite-And-DeleteFile $vaultFile
             $vault = @()
-            [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($salt)
-            [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($iv)
             $vaultList.Items.Clear()
             Enable-VaultUI $false
-            [System.Windows.Forms.MessageBox]::Show("Vault reset successfully.")
+            [System.Windows.Forms.MessageBox]::Show("Vault destroyed and file securely deleted.")
         } catch {
-            [System.Windows.Forms.MessageBox]::Show("Error resetting vault.")
+            [System.Windows.Forms.MessageBox]::Show("Error destroying vault.")
         }
     }
 })
